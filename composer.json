@@ -18,8 +18,8 @@
     },
     "autoload": {
         "psr-0": {
-            "Db": "src/",
-            "Db\\PHPUnit": "test/"
+            "Laramongo": "src/",
+            "Laramongo\\PHPUnit": "test/"
         }
     },
     "extra": {
