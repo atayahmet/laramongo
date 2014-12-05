@@ -2,51 +2,38 @@
 
 namespace Laramongo;
 
-use Laramongo\Laraexception as Catcher;
+use Laramongo\ResultActions\ResultAction;
+use Laramongo\QueryBuilder;
 
 class Laramongo implements LaramongoInterface {
     protected static $Instance;
     protected static $_client;
     protected static $_collection;
+    protected static $_mongoId;
     protected static $mongoId;
     protected static $dbData = array();
     protected static $findResult;
     protected static $selectedDb;
+    protected static $query;
+    protected static $resultAction;
     public static $dbname = 'l5blog';
 
     protected static $where = array();
+    protected static $limit;
+
+    public function __construct()
+    {
+        self::$query = new QueryBuilder;
+        self::$resultAction = new ResultAction;
+    }
 
     public static function save()
     {
-
         if(!is_array(self::$findResult)){
             return self::insert();
         }
 
-
         return self::update();
-
-        exit(var_dump(self::$findResult['_id']->{'$id'}));
-        exit(var_dump(self::$dbData));
-        $dbName = self::$_client->selectDB(self::$dbname);
-
-      //  $t = new \MongoCollection($x, self::getCollection());
-        //echo '<pre>';
-        $coll = self::collection($dbName);
-       // exit(var_dump($coll));
-
-
-        $result = $coll->insert(array('title' => 'te beyleeee'));
-        //exit(var_dump($result));
-        //$m = $db->selectCollection('l5blog','content');
-        //exit(var_dump($m));
-        //$db->createCollection(self::getInstance()->collection);
-       //self::getCollection();
-      //  last()
-       // exit(var_dump(get_class(self::getInstance())));
-       // $m->bal->insert(array('name' => 'test'));
-        //exit(var_dump($m->insert(array('title' => 'testx'))));
-
     }
 
     public static function lastId()
@@ -54,17 +41,88 @@ class Laramongo implements LaramongoInterface {
         return self::$mongoId;
     }
 
+    private static function _query($fail = false, $method = 'find', $setData = false)
+    {
+        self::createInstances();
+
+        self::$findResult = self::$_collection->$method(self::$where);
+       // echo '<pre>';
+       // var_dump(self::$where);
+        //exit(var_dump(self::$findResult));
+        if(is_array(self::$findResult) || self::$findResult->count() > 0) {
+            if(is_numeric(self::$limit)){
+                if(is_object(self::$findResult)) {
+                    self::$findResult = self::$findResult->limit (self::$limit);
+                }
+
+                if($setData && self::$limit == 1) {
+                    self::setData (self::$findResult);
+                }
+            }
+
+            return self::getInstance();
+        }
+
+        elseif($fail){
+            exit('not found');
+        }
+    }
+
     public static function find($id = false)
     {
-        if(count(func_get_args()) > 0){
+        self::$limit = 1;
+
+        return self::_find(false, $id, 'find');
+    }
+
+    public static function findOrFail($id = false)
+    {
+        self::$limit = 1;
+
+        return self::_find(true, $id, 'find');
+    }
+
+    public static function firstOrFail()
+    {
+        self::$limit = 1;
+
+        return self::_find(true, false, 'find');
+    }
+
+    public static function first()
+    {
+        self::$limit = 1;
+
+        return self::_find(false, false, 'find');
+    }
+
+    public static function take($limit)
+    {
+        self::$limit = $limit;
+
+        return self::getInstance();
+    }
+
+    public static function whereRaw($raw)
+    {
+        self::$where = $raw;
+
+        return self::getInstance();
+    }
+
+    private static function _find($fail, $id, $method = 'find')
+    {
+        if($id){
             self::createInstances();
+            self::where(array('_id' => $id));
 
-            self::$findResult = self::$_collection->findOne(array('_id' => new \MongoId($id)));
+            return self::_query($fail, 'findOne', true);
+        }
 
-            if(self::$findResult) {
-                self::where(array("_id" => self::mongoId(self::$findResult['_id']->{'$id'})));
-                return new static;
-            }
+        elseif(count(self::$where) > 0){
+            return self::_query($fail, $method, true);
+        }else{
+            exit('not found');
         }
 
         return false;
@@ -83,6 +141,7 @@ class Laramongo implements LaramongoInterface {
 
             if(is_array($result)){
                 self::$mongoId = self::$findResult['_id']->{'$id'};
+
                 return true;
             }
 
@@ -119,44 +178,26 @@ class Laramongo implements LaramongoInterface {
         }
     }
 
-    public static function where($field = false, $compare = '=', $val = false)
-    {
-        try {
-            $args = func_get_args();
-
-            if(count($args) == 1){
-                if(!is_array($args[0])){
-                    throw new Catcher('hatalı parametre');
-                }
-
-                foreach($args[0] as $field => $val){
-                    self::$where[$field] = $val;
-                }
-            }
-
-            elseif(count($args) == 2){
-                self::$where[$args[0]] = $args[1];
-            }
-
-            elseif(count($args) == 3){
-
-            }
-            else
-            {
-                throw new Catcher('hatalı parametre');
-            }
-
-            return self::getInstance();
-        }
-
-        catch(Catcher $e){
-            Catcher::fire($e);
-        }
-    }
-
     public static function get()
     {
+        self::createInstances();
+        self::_query(false, 'find');
 
+        return clone self::getInstance();
+    }
+
+    public static function all()
+    {
+        self::createInstances();
+        self::_query(false, 'find');
+
+        return clone self::getInstance();
+    }
+
+    public static function count()
+    {
+        self::createInstances();
+        return self::$findResult = self::$_collection->count(self::$where);
     }
 
     private static function setInteractionResults($result, $mongo_id = false, $type)
@@ -170,7 +211,6 @@ class Laramongo implements LaramongoInterface {
         };
 
         return $closure($result, $mongo_id, $type);
-
     }
 
     private static function getInstance()
@@ -196,7 +236,7 @@ class Laramongo implements LaramongoInterface {
                 self::$_collection = new \MongoCollection($db, self::getCollection ());
 
                 if (isset(self::$_collection->validate (true)['errmsg'])) {
-                    throw new ErrorCatcher('hata var');
+                    throw new Catcher('hata var');
                 }
             }
         }
@@ -216,10 +256,19 @@ class Laramongo implements LaramongoInterface {
         return self::getInstance()->collection;
     }
 
-    private static function createMongoId()
+    public static function createMongoId()
     {
-        $m = new \MongoId();
-        self::$mongoId = $m->{'$id'};
+        try {
+            if (!self::$_mongoId) {
+                self::$_mongoId = new \MongoId();
+            }
+        }
+
+        catch(Catcher $e){
+            Catcher::fire($e);
+        }
+
+        self::$mongoId = self::$_mongoId->{'$id'};
     }
 
     private static function createInstances()
@@ -232,8 +281,12 @@ class Laramongo implements LaramongoInterface {
         self::serviceCollection(self::$selectedDb);
     }
 
-    private static function mongoId($id)
+    public static function mongoId($id)
     {
+        if(!self::$_mongoId->isValid($id)){
+            exit('invalid id');
+        }
+
         return new \MongoId($id);
     }
 
@@ -246,8 +299,35 @@ class Laramongo implements LaramongoInterface {
 
     private static function setData($data)
     {
-        foreach($data as $field => $val){
-            self::$dbData[$field] = $val;
+        if(is_array($data)){
+            foreach($data as $field => $val){
+                self::$dbData[$field] = $val;
+            }
+        }else{
+            foreach($data as $d){
+                foreach($d as $field => $val) {
+                    self::$dbData[$field] = $val;
+                }
+            }
+        }
+    }
+
+    private static function _callMethod($method, $args)
+    {
+        if(method_exists(self::$resultAction, $method)){
+            return ResultAction::$method(self::$findResult);
+        }
+
+        elseif(method_exists(self::$query, $method)){
+            $result = self::$query->$method($args);
+
+            if(count(self::$$method) > 0){
+                self::$$method = self::$query->chain(self::$$method, $result, $method);
+            }else{
+                self::$$method = self::$query->$method($args);
+            }
+
+            return self::getInstance();
         }
     }
 
@@ -263,5 +343,15 @@ class Laramongo implements LaramongoInterface {
         if(count(func_get_args()) == 2){
             self::setData(array($field => $value));
         }
+    }
+
+    public function __call($method, $args)
+    {
+        return self::_callMethod($method, $args);
+    }
+
+    public static function __callStatic($method, $args)
+    {
+        return self::_callMethod($method, $args);
     }
 }
