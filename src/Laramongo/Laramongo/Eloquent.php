@@ -6,6 +6,7 @@ use Laramongo\Mongocore\Basemongo;
 use Laramongo\ResultActions\ResultAction;
 use Laramongo\Laramongo\QueryBuilder;
 use Laramongo\Config\Config;
+use Laramongo\Exceptions\Laraexception as Catcher;
 
 class Eloquent implements EloquentInterface {
 
@@ -14,9 +15,13 @@ class Eloquent implements EloquentInterface {
     protected static $_collection;
     protected static $_mongoId;
     protected static $mongoId;
+    protected static $lastId;
     protected static $dbData = array();
     protected static $findResult;
     protected static $selectedDb;
+    protected static $softDelete = false;
+    protected static $withTrashed = false;
+    protected static $onlyTrashed = false;
     protected static $on = false;
 
     protected static $query;
@@ -46,15 +51,16 @@ class Eloquent implements EloquentInterface {
 
     public static function lastId()
     {
-        return self::$mongoId;
+        return self::$lastId;
     }
 
     private static function _query($fail = false, $method = 'find', $setData = false)
     {
         self::createInstances();
+        self::checkSoftDeleteAndUse();
 
         self::$findResult = self::$_collection->$method(self::$where);
-
+//var_dump(self::$where) . "\n\n";
         if(is_array(self::$findResult) || (!is_null(self::$findResult)) && self::$findResult->count() > 0) {
             if(is_numeric(self::$limit)){
                 if(is_object(self::$findResult)) {
@@ -74,6 +80,8 @@ class Eloquent implements EloquentInterface {
         elseif($fail){
             exit('not found');
         }
+
+        return false;
     }
 
     private static function checkSetOn()
@@ -85,6 +93,7 @@ class Eloquent implements EloquentInterface {
 
     private static function resetSqlVars()
     {
+
         self::$where = array();
         self::$limit = null;
         self::$dbData = array();
@@ -97,11 +106,31 @@ class Eloquent implements EloquentInterface {
         return self::_find(false, $id, 'find');
     }
 
-    public static function findOrFail($id = false)
+    public static function findOrFail($id = false, $testEnv = false)
     {
-        self::$limit = 1;
+        if(!self::$_mongoId->isValid($id)){
+            return self::checkTestEnv($testEnv, $id, 'missing_parameter');
+        }
 
-        return self::_find(true, $id, 'find');
+        self::$limit = 1;
+        self::resetSqlVars();
+
+        $result = self::_find(false, $id, 'find');
+
+        if(!$result){
+            return self::checkTestEnv($testEnv, $id, 'query_not_found');
+        }
+
+        return $result;
+    }
+
+    private static function checkTestEnv($test = false, $args, $error)
+    {
+        if($test){
+            return false;
+        }
+
+        self::_requestFail($args, $error);
     }
 
     public static function firstOrFail()
@@ -150,11 +179,16 @@ class Eloquent implements EloquentInterface {
 
         elseif(count(self::$where) > 0){
             return self::_query($fail, $method, true);
-        }else{
-            exit('not found');
         }
 
         return false;
+    }
+
+    public static function touch()
+    {
+        self::checkTimestamps('updated');
+
+        return self::update();
     }
 
     public static function update($data = false)
@@ -234,7 +268,7 @@ class Eloquent implements EloquentInterface {
         return false;
     }
 
-    public static function checkSoftDelete()
+    private static function checkSoftDelete()
     {
         if(isset(self::getInstance()->dates) && is_array(self::getInstance()->dates)){
             $dateKey = array_search('deleted_at',self::getInstance()->dates);
@@ -342,6 +376,7 @@ class Eloquent implements EloquentInterface {
             if(is_array($result)) {
                 if($type == 'insert'){
                     self::$dbData['id'] = $mongo_id->{'$id'};
+                    self::$lastId = $mongo_id->{'$id'};
                 }
             }
         };
@@ -512,8 +547,87 @@ class Eloquent implements EloquentInterface {
 
             return self::getInstance();
         }else{
-            exit('dddd');
+            self::_requestFail($args,1);
         }
+    }
+
+    private static function _requestFail($args, $errno = 1)
+    {
+        try {
+            $detail = array('detail' => func_get_args());
+
+            throw new Catcher($errno);
+        }
+        catch(Catcher $e){
+            $detail['e'] = $e;
+
+            Catcher::fire($detail);
+        }
+    }
+    private static function softDeleteChecker()
+    {
+        if (empty(self::$softDelete)){
+
+            self::$softDelete = false;
+
+            $soft = isset(self::getInstance ()->dates) && is_array (self::getInstance ()->dates) ? self::getInstance ()->dates : array();
+
+            if (in_array ('deleted_at', $soft)) {
+                self::$softDelete = true;
+            }
+        }
+
+        return self::$softDelete;
+    }
+
+    private static function checkSoftDeleteAndUse()
+    {
+        if(self::softDeleteChecker()) {
+            if (!self::$withTrashed && !self::$onlyTrashed) {
+                self::where ('deleted_at', null);
+            }
+
+            elseif (self::$onlyTrashed === true) {
+                self::where ('deleted_at', '$ne', null);
+            }
+        }
+    }
+
+    public static function withTrashed()
+    {
+        self::$withTrashed = true;
+
+        return self::getInstance();
+    }
+
+    public static function onlyTrashed()
+    {
+        self::$onlyTrashed = true;
+
+        return self::getInstance();
+    }
+
+    public static function restore()
+    {
+        self::$dbData['deleted_at'] = null;
+
+        return self::update();
+    }
+
+    public static function forceDelete()
+    {
+        return self::checkResult(self::_delete());
+    }
+
+    public static function trashed()
+    {
+        if(count(self::$dbData) > 0){
+            if(isset(self::$dbData['deleted_at']) && !is_null(self::$dbData['deleted_at'])){
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function __get($var)

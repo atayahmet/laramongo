@@ -14,6 +14,7 @@ interface EloquentInterface {
     public static function update($data = false);
     public static function delete();
     public static function destroy($args);
+    public static function touch();
     public static function insert($data = false);
     public static function create($data = false);
     public static function firstOrCreate($data = false);
@@ -21,4 +22,9 @@ interface EloquentInterface {
     public static function get();
     public static function all();
     public static function count();
+    public static function withTrashed();
+    public static function onlyTrashed();
+    public static function restore();
+    public static function forceDelete();
+    public static function trashed();
 }

@@ -18,8 +18,8 @@
     },
     "autoload": {
         "psr-0": {
-            "Laramongo": "src/",
-            "Laramongo\\PHPUnit": "test/"
+            "Laramongo\\": "src/",
+            "": "tests/"
         }
     },
     "extra": {

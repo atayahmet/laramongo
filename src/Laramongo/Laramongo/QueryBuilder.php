@@ -6,7 +6,7 @@ use Laramongo\Mongocore\Basemongo;
 
 class QueryBuilder {
 
-    protected static $whereOp = array('>' => '$gt', '>=' => '$gte', '<' => '$lt', '<=' =>'$lte', '<>' => '$ne', '!=' => '$ne','in' => '$in','notIn','$nin');
+    protected static $whereOp = array('>' => '$gt', '>=' => '$gte', '<' => '$lt', '<=' =>'$lte', '<>' => '$ne', '!=' => '$ne','in' => '$in','notIn','$nin','$exists' => '$exists');
     protected static $chains = array('where' => '$and');
 
     public static function where($args)
