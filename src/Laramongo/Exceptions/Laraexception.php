@@ -2,7 +2,7 @@
 
 namespace Laramongo\Exceptions;
 
-class Laraexception extends \Exception{
+class Laraexception extends \MongoException {
     private static $msg = array(
         'query_not_found' => 'No results were found for query',
         'missing_parameter' => 'Incorrect/Missing parameter'
@@ -10,6 +10,12 @@ class Laraexception extends \Exception{
 
     public static function fire($error)
     {
-        exit(var_dump(self::$msg[$error['e']->getMessage()]));
+        if(isset(self::$msg[$error['e']->getMessage()])){
+            $msg = self::$msg[$error['e']->getMessage()];
+        }else{
+            $msg = $error['e']->getMessage();
+        }
+
+        exit(var_dump($msg));
     }
 }

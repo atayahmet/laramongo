@@ -8,8 +8,8 @@ class User extends Eloquent {
     protected $collection = 'users';
     public $timestamps = true;
 
+    protected $fillable = array('firstname','username');
+    protected $guarded = array('address');
     protected $dates = ['deleted_at'];
-    protected $fillable = array();
-    protected $guarded = array();
     protected $primaryKey = '_id';
 }

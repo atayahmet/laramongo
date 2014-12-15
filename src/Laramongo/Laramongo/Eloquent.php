@@ -60,8 +60,9 @@ class Eloquent implements EloquentInterface {
         self::checkSoftDeleteAndUse();
 
         self::$findResult = self::$_collection->$method(self::$where);
-//var_dump(self::$where) . "\n\n";
-        if(is_array(self::$findResult) || (!is_null(self::$findResult)) && self::$findResult->count() > 0) {
+
+        if(self::resultIsValid()) {
+
             if(is_numeric(self::$limit)){
                 if(is_object(self::$findResult)) {
                     self::$findResult = self::$findResult->limit (self::$limit);
@@ -84,6 +85,29 @@ class Eloquent implements EloquentInterface {
         return false;
     }
 
+    private static function resultIsValid()
+    {
+        $result = self::$findResult;
+        $isCountable = method_exists($result, 'count');
+
+        if(!is_null($result)) {
+            try {
+                if (is_array ($result) && count($result) > 0) {
+                    return true;
+                }
+
+                if(is_object($result) && $isCountable && $result->count() > 0){
+                    return true;
+                }
+            }
+            catch(\MongoException $e){
+                Catcher::fire(array('e' => $e));
+            }
+        }
+
+        return false;
+}
+
     private static function checkSetOn()
     {
         if(self::$on === true){
@@ -93,7 +117,6 @@ class Eloquent implements EloquentInterface {
 
     private static function resetSqlVars()
     {
-
         self::$where = array();
         self::$limit = null;
         self::$dbData = array();
@@ -113,9 +136,10 @@ class Eloquent implements EloquentInterface {
         }
 
         self::$limit = 1;
-        self::resetSqlVars();
 
         $result = self::_find(false, $id, 'find');
+
+        self::resetSqlVars();
 
         if(!$result){
             return self::checkTestEnv($testEnv, $id, 'query_not_found');
@@ -124,20 +148,17 @@ class Eloquent implements EloquentInterface {
         return $result;
     }
 
-    private static function checkTestEnv($test = false, $args, $error)
-    {
-        if($test){
-            return false;
-        }
-
-        self::_requestFail($args, $error);
-    }
-
-    public static function firstOrFail()
+    public static function firstOrFail($testEnv = false)
     {
         self::$limit = 1;
 
-        return self::lastOpr(self::_find(true, false, 'find'));
+        $result = self::lastOpr(self::_find(false, false, 'find'));
+
+        if(!$result){
+            return self::checkTestEnv($testEnv, false, 'query_not_found');
+        }
+
+        return $result;
     }
 
     public static function first()
@@ -177,7 +198,7 @@ class Eloquent implements EloquentInterface {
             return self::_query($fail, 'findOne', true);
         }
 
-        elseif(count(self::$where) > 0){
+        elseif(count(self::$where) > 0 || self::softDeleteChecker()){
             return self::_query($fail, $method, true);
         }
 
@@ -301,6 +322,7 @@ class Eloquent implements EloquentInterface {
                 unset(self::$dbData['_id']);
 
                 $data = self::$dbData;
+
                 $result = self::$_collection->insert($data);
 
                 self::setInteractionResults($result, $data['_id'], 'insert');
@@ -325,7 +347,9 @@ class Eloquent implements EloquentInterface {
     {
         $result = self::where(key($data),current($data))->first();
 
-        if(!is_null($result) && count($result->toArray()) > 0){
+        self::resetSqlVars();
+
+        if(self::resultIsValid($result)){
             return $result;
         }
 
@@ -351,6 +375,7 @@ class Eloquent implements EloquentInterface {
     {
         self::createInstances();
         self::_query(false, 'find');
+        self::resetSqlVars();
 
         return clone self::getInstance();
     }
@@ -358,6 +383,7 @@ class Eloquent implements EloquentInterface {
     public static function all()
     {
         self::createInstances();
+        self::$limit = null;
         self::_query(false, 'find');
 
         return clone self::getInstance();
@@ -367,7 +393,10 @@ class Eloquent implements EloquentInterface {
     {
         self::createInstances();
 
-        return self::$findResult = self::$_collection->count(self::$where);
+        self::$findResult = self::$_collection->count(self::$where);
+        self::resetSqlVars();
+
+        return self::$findResult;
     }
 
     private static function setInteractionResults($result, $mongo_id = false, $type)
@@ -527,6 +556,8 @@ class Eloquent implements EloquentInterface {
     private static function _callMethod($method, $args)
     {
         if(method_exists(self::$resultAction, $method)){
+            self::resetSqlVars();
+
             return self::$resultAction->injectDepend(array())->$method(self::$findResult);
         }
 
@@ -591,6 +622,15 @@ class Eloquent implements EloquentInterface {
                 self::where ('deleted_at', '$ne', null);
             }
         }
+    }
+
+    private static function checkTestEnv($test = false, $args, $error)
+    {
+        if($test){
+            return false;
+        }
+
+        self::_requestFail($args, $error);
     }
 
     public static function withTrashed()
