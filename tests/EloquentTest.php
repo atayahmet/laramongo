@@ -10,6 +10,60 @@
 class EloquentTest extends Boot {
     private static $model;
 
+    /**
+     * @method findOrFail
+     */
+    public function testFindOrFail()
+    {
+        self::$model = self::$instance['user'];
+        // Yeni bir kullanıcı oluşturuluyor..
+        $name = 'Ali';
+        $lastname = 'Yılmaz';
+
+        self::$model->firstname = $name;
+        self::$model->lastname = $lastname;
+        self::$model->age = 18;
+        self::$model->save();
+
+        // son kaydın insert id'si alınıyor.
+        $lastId = self::$model->lastId();
+        $usrResult = self::$model->findOrFail($lastId, $testEnv = true);
+
+        $this->assertGreaterThan(0, count($usrResult));
+
+        // fail test
+        $this->assertFalse(self::$model->findOrFail('blablabla', $testEnv = true));
+    }
+
+    /**
+     * @method find
+     */
+    public function testFind()
+    {
+        self::$model = self::$instance['user'];
+        // Yeni bir kullanıcı oluşturuluyor..
+        $name = 'Ali';
+        $lastname = 'Yılmaz';
+
+        self::$model->firstname = $name;
+        self::$model->lastname = $lastname;
+        self::$model->age = 18;
+        self::$model->save();
+
+        // son kaydın insert id'si alınıyor.
+        $lastId = self::$model->lastId();
+
+        $lastUser = self::$model->find($lastId);
+        $this->assertEquals($lastUser->firstname, $name);
+
+        $newFirstname = 'Ali Can';
+        $lastUser->firstname = $newFirstname;
+        $lastUser->save();
+
+        $lastUser = self::$model->find($lastId);
+        $this->assertEquals($lastUser->firstname, $newFirstname);
+    }
+
 
     /**
      * @method all
@@ -24,51 +78,6 @@ class EloquentTest extends Boot {
         $this->assertEquals($total, $countTotal);
     }
 
-    /**
-     * @method find
-     */
-    public function testFind()
-    {
-        // Yeni bir kullanıcı oluşturuluyor..
-        $name = 'Ali';
-        $lastname = 'Yılmaz';
-
-        self::$model->firstname = $name;
-        self::$model->lastname = $lastname;
-        self::$model->save();
-
-        // son kaydın insert id'si alınıyor.
-        $lastId = self::$model->lastId();
-
-        $lastUser = self::$model->find($lastId);
-
-        $this->assertEquals($lastUser->firstname, $name);
-    }
-
-
-    /**
-     * @method findOrFail
-     */
-    public function testFindOrFail()
-    {
-        // Yeni bir kullanıcı oluşturuluyor..
-        $name = 'Ali';
-        $lastname = 'Yılmaz';
-
-        self::$model->firstname = $name;
-        self::$model->lastname = $lastname;
-        self::$model->save();
-
-        // son kaydın insert id'si alınıyor.
-        $lastId = self::$model->lastId();
-
-        $usrResult = self::$model->findOrFail($lastId, $testEnv = true)->toArray();
-
-        $this->assertGreaterThan(0, count($usrResult));
-
-        // fail test
-        $this->assertFalse(self::$model->findOrFail('blablabla', $testEnv = true));
-    }
 
     /**
      * @method firstOrFail
@@ -76,7 +85,9 @@ class EloquentTest extends Boot {
     public function testFirstOrFail()
     {
         self::$model = self::$instance['user'];
-        $name1 = self::$model->where('lastname','Yılmaz')->firstOrFail($testEnv = true)->toArray()[0]['firstname'];
+        self::$model->withTrashed()->where('lastname','Yılmaz')->restore();
+        $name1 = self::$model->where('firstname','Ali')->firstOrFail($testEnv = true)->toArray()[0]['firstname'];
+
         $name2 = self::$model->where('firstname','Ali')->firstOrFail($testEnv = true)->toArray()[0]['firstname'];
 
         $this->assertEquals($name1, $name2);
@@ -143,6 +154,7 @@ class EloquentTest extends Boot {
 
         self::$model->firstname = $firstname;
         self::$model->lastname = $lastname;
+        self::$model->age = 18;
         self::$model->save();
 
         $fname = self::$model->where('firstname',$firstname)->count();
@@ -166,6 +178,7 @@ class EloquentTest extends Boot {
 
         self::$model->firstname = $firstname;
         self::$model->lastname = $lastname;
+        self::$model->age = 18;
         self::$model->address = $address;
         self::$model->save();
 
@@ -174,6 +187,16 @@ class EloquentTest extends Boot {
 
         $lname = self::$model->where('address',$address)->count();
         $this->assertEquals(0,$lname);
+    }
+
+    /**
+     * @method save
+     */
+    public function testSave()
+    {
+        self::$model->firstname = 'Erkan' ;
+
+        $this->assertTrue(self::$model->save());
     }
 
     /**
@@ -195,7 +218,7 @@ class EloquentTest extends Boot {
      */
     public function testFirstOrCreate()
     {
-        $username = 'darknight--' . rand(0,1000);
+        $username = 'darknight--' . rand(0,1000000);
 
         $check = self::$model->where('username', $username)->count();
         $this->assertEquals(0, $check);
@@ -204,4 +227,56 @@ class EloquentTest extends Boot {
         $check = self::$model->where('username', $username)->count();
         $this->assertGreaterThan(0, $check);
     }
+
+    /**
+     * @method update
+     */
+    public function testUpdate()
+    {
+        $totalStatus = self::$model->where('status',1)->count();
+
+        $result = self::$model->where('age', '$gt', 17)->update(array('status' => 1));
+        $this->assertTrue($result);
+
+        $newTotalStatus = self::$model->where('status',1)->count();
+
+        $this->assertGreaterThan($totalStatus, $newTotalStatus);
+    }
+
+    /**
+     * @method delete
+     */
+    public function testDelete()
+    {
+        self::$model = self::$instance['user'];
+
+        $firstname = 'blablaa-' . rand(0,1000);
+        $lastname = 'blablaa-' . rand(0,1001);
+
+        self::$model->firstname = $firstname;
+        self::$model->lastname = $lastname;
+        self::$model->age = 18;
+        self::$model->save();
+
+        $lastId = self::$model->lastId();
+
+        $fname = self::$model->where('firstname', $firstname)->count();
+        $this->assertGreaterThan(0, $fname);
+
+        $item = self::$model->find($lastId);
+        $this->assertTrue($item->delete());
+    }
+
+    /**
+     * @method touch
+     */
+    public function testTouch()
+    {
+        self::$model = self::$instance['user'];
+        $firstData = self::$model->where('updated_at','$ne',null)->first();
+        $updatedAt = $firstData->toArray()[0]['updated_at'];
+        $this->assertTrue($firstData->touch());
+    }
+
+
 }

@@ -43,10 +43,10 @@ class Eloquent implements EloquentInterface {
     public static function save()
     {
         if(!is_array(self::$findResult)){
-            return self::insert();
+            return self::lastOpr(self::insert());
         }
 
-        return self::update();
+        return self::lastOpr(self::update());
     }
 
     public static function lastId()
@@ -219,13 +219,20 @@ class Eloquent implements EloquentInterface {
                 self::setData($data);
             }
 
-            self::checkFillable();
+            self::createInstances();
             self::checkGuarded();
+            self::checkFillable();
             self::checkTimestamps('updated');
 
-            unset(self::$dbData['_id']);
+            unset(self::$dbData['_id'], self::$dbData['created_at']);
 
-            $result = self::$_collection->update(self::$where, self::$dbData);
+            $result = self::$_collection->update(
+                self::$where,
+                array('$set' => self::$dbData),
+                array('multiple' => true)
+            );
+
+            self::resetSqlVars();
 
             return self::checkResult($result);
         }
@@ -241,10 +248,10 @@ class Eloquent implements EloquentInterface {
         $softResult = self::checkSoftDelete();
 
         if($softResult === false) {
-            return self::checkResult(self::_delete());
+            return self::lastOpr(self::checkResult(self::_delete()));
         }
 
-        return $softResult;
+        return self::lastOpr($softResult);
     }
 
     private static function _delete()
@@ -327,7 +334,7 @@ class Eloquent implements EloquentInterface {
 
                 self::setInteractionResults($result, $data['_id'], 'insert');
 
-                return self::lastId() ? true : false;
+                return self::lastId() !== '' ? true : false;
             }
         }
 
@@ -383,6 +390,8 @@ class Eloquent implements EloquentInterface {
     public static function all()
     {
         self::createInstances();
+        self::resetSqlVars();
+
         self::$limit = null;
         self::_query(false, 'find');
 
@@ -392,8 +401,10 @@ class Eloquent implements EloquentInterface {
     public static function count()
     {
         self::createInstances();
+        self::checkSoftDeleteAndUse();
 
         self::$findResult = self::$_collection->count(self::$where);
+
         self::resetSqlVars();
 
         return self::$findResult;
@@ -502,16 +513,23 @@ class Eloquent implements EloquentInterface {
         return Basemongo::MongoId($id);
     }
 
-    private static function checkTimestamps($type)
+    private static function checkTimestamps($types)
     {
         if(self::getInstance()->timestamps === true){
-            self::$dbData[$type . '_at'] = date('Y-m-d H:i:s',time());
+            if(!is_array($types)){
+                $types = array($types);
+            }
+
+            foreach($types as $_type) {
+                self::$dbData[$_type . '_at'] = date ('Y-m-d H:i:s', time ());
+            }
         }
     }
 
     private static function checkFillable()
     {
         $fillable = self::getInstance()->fillable;
+        array_push($fillable, 'deleted_at');
 
         if(is_array($fillable) && count($fillable) > 0){
             $filter = array();

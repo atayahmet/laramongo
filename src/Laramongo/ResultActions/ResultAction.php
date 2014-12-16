@@ -28,6 +28,7 @@ class ResultAction {
 
     public static function setData($data, $dbData = array())
     {
+
         foreach($data as $f => $d){
             if(is_array($d)) {
                 self::setData($d,$dbData);
